@@ -221,13 +221,138 @@ void scrollCallback(GLFWwindow *window, double xoffset, double yoffset){
 }
 
 
-void addCube(GLFWwindow *window, vec3 newCubePosition){
+void addCube(GLFWwindow *window){
     struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
     struct Chunk *chunk = camAndChunk->chunk;
-    /*cubePosition->cubePositions[cubePosition->positionIndex][0] = newCubePosition[0];
-    cubePosition->cubePositions[cubePosition->positionIndex][1] = newCubePosition[1];
-    cubePosition->cubePositions[cubePosition->positionIndex++][2] = newCubePosition[2];
-*/}
+    struct Camera *cam = camAndChunk->cam;
+
+    ivec3 currentPos;
+    currentPos[0] = (int)floor(cam->position[0]);
+    currentPos[1] = (int)floor(cam->position[1]) + 1;
+    currentPos[2] = (int)floor(cam->position[2]);
+
+    vec3 step;
+    step[0] = (cam->front[0] > 0) ? 1 : -1;
+    step[1] = (cam->front[1] > 0) ? 1 : -1;
+    step[2] = (cam->front[2] > 0) ? 1 : -1;
+
+    vec3 deltaDist;
+    deltaDist[0] = 1 / cam->front[0];
+    deltaDist[1] = 1 / cam->front[1];
+    deltaDist[2] = 1 / cam->front[2];
+
+    vec3 sideDist;
+    if (step[0] > 0){
+        sideDist[0] = (floor(cam->position[0]) + 1.0f - cam->position[0]) * deltaDist[0];
+    }
+    else{
+        sideDist[0] = (cam->position[0] - floor(cam->position[0])) * deltaDist[0];
+    }
+    if (step[1] > 0){
+        sideDist[1] = (floor(cam->position[1]) + 1.0f - cam->position[1]) * deltaDist[1];
+    }
+    else{
+        sideDist[1] = (cam->position[1] - floor(cam->position[1])) * deltaDist[1];
+    }
+    if (step[2] > 0){
+        sideDist[2] = (floor(cam->position[2]) + 1.0f - cam->position[2]) * deltaDist[2];
+    }
+    else{
+        sideDist[2] = (cam->position[2] - floor(cam->position[2])) * deltaDist[2];
+    }
+
+    ivec3 lastAirBlock;
+    glm_ivec3_copy(currentPos, lastAirBlock);
+
+    for(int i = 0; i < 10; i++){
+        if(chunk->blocks[currentPos[0]][currentPos[1]][currentPos[2]].blockId != AIR){
+            printf("currentPos: %d, %d, %d lastAirBlock: %d, %d, %d\n", currentPos[0], currentPos[1], currentPos[2], lastAirBlock[0], lastAirBlock[1], lastAirBlock[2]);
+            chunk->blocks[lastAirBlock[0]][lastAirBlock[1]][lastAirBlock[2]].blockId = DIRT;
+            break;
+        }
+        glm_ivec3_copy(currentPos, lastAirBlock);
+        if(fabs(sideDist[0]) < fabs(sideDist[1]) && fabs(sideDist[0]) < fabs(sideDist[2])){
+            sideDist[0] += deltaDist[0];
+            currentPos[0] += step[0];
+        }
+        else if(fabs(sideDist[1]) < fabs(sideDist[2])){
+            sideDist[1] += deltaDist[1];
+            currentPos[1] += step[1];
+
+        }
+        else{
+            sideDist[2] += deltaDist[2];
+            currentPos[2] += step[2];
+
+        }
+    }
+
+}
+
+
+void breakCube(GLFWwindow *window){
+    struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
+    struct Chunk *chunk = camAndChunk->chunk;
+    struct Camera *cam = camAndChunk->cam;
+
+    ivec3 currentPos;
+    currentPos[0] = (int)floor(cam->position[0]);
+    currentPos[1] = (int)floor(cam->position[1]) + 1;
+    currentPos[2] = (int)floor(cam->position[2]);
+
+    vec3 step;
+    step[0] = (cam->front[0] > 0) ? 1 : -1;
+    step[1] = (cam->front[1] > 0) ? 1 : -1;
+    step[2] = (cam->front[2] > 0) ? 1 : -1;
+
+    vec3 deltaDist;
+    deltaDist[0] = 1 / cam->front[0];
+    deltaDist[1] = 1 / cam->front[1];
+    deltaDist[2] = 1 / cam->front[2];
+
+    vec3 sideDist;
+    if (step[0] > 0){
+        sideDist[0] = (floor(cam->position[0]) + 1.0f - cam->position[0]) * deltaDist[0];
+    }
+    else{
+        sideDist[0] = (cam->position[0] - floor(cam->position[0])) * deltaDist[0];
+    }
+    if (step[1] > 0){
+        sideDist[1] = (floor(cam->position[1]) + 1.0f - cam->position[1]) * deltaDist[1];
+    }
+    else{
+        sideDist[1] = (cam->position[1] - floor(cam->position[1])) * deltaDist[1];
+    }
+    if (step[2] > 0){
+        sideDist[2] = (floor(cam->position[2]) + 1.0f - cam->position[2]) * deltaDist[2];
+    }
+    else{
+        sideDist[2] = (cam->position[2] - floor(cam->position[2])) * deltaDist[2];
+    }
+
+
+    for(int i = 0; i < 10; i++){
+        if(chunk->blocks[currentPos[0]][currentPos[1]][currentPos[2]].blockId != AIR){
+            chunk->blocks[currentPos[0]][currentPos[1]][currentPos[2]].blockId = AIR;
+            break;
+        }
+        if(fabs(sideDist[0]) < fabs(sideDist[1]) && fabs(sideDist[0]) < fabs(sideDist[2])){
+            sideDist[0] += deltaDist[0];
+            currentPos[0] += step[0];
+        }
+        else if(fabs(sideDist[1]) < fabs(sideDist[2])){
+            sideDist[1] += deltaDist[1];
+            currentPos[1] += step[1];
+
+        }
+        else{
+            sideDist[2] += deltaDist[2];
+            currentPos[2] += step[2];
+
+        }
+    }
+
+}
 
 
 void createChunk(struct Chunk *chunk){
@@ -275,12 +400,10 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods){
     struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
     struct Camera *cam = camAndChunk->cam;
     if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
-        vec3 cameraCenter;
-        glm_vec3_add(cam->position, cam->front, cameraCenter);
-        cameraCenter[0] = (int)cameraCenter[0];
-        cameraCenter[1] = (int)cameraCenter[1];
-        cameraCenter[2] = (int)cameraCenter[2];
-        addCube(window, cameraCenter);
+        addCube(window);
+    }
+    else if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+        breakCube(window);
     }
 }
 
