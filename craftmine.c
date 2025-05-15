@@ -1,12 +1,7 @@
 #include "craftmine.h"
-#include "cglm/cglm.h"
-#include "glad/glad.h"
-#include <GLFW/glfw3.h>
-#include <math.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 
+#define STB_DS_IMPLEMENTATION
+#include "stb_ds.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
@@ -16,13 +11,13 @@ void framebufferSizeCallback(GLFWwindow *window, int width, int height){
 
 
 void processInput(GLFWwindow *window, float deltaTime){
-    struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
-    struct Camera *cam = camAndChunk->cam;
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct Camera *cam = dataWrapper->cam;
     if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS){
         glfwSetWindowShouldClose(window, true);
     }
 
-    vec3 cameraSpeed = {2.5f * deltaTime, 2.5f * deltaTime, 2.5f * deltaTime};
+    vec3 cameraSpeed = {5.0f * deltaTime, 5.0f * deltaTime, 5.0f * deltaTime};
 
     if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
         vec3 cameraPosOffset;
@@ -50,6 +45,21 @@ void processInput(GLFWwindow *window, float deltaTime){
         glm_vec3_mul(cameraPosOffset, cameraSpeed, cameraPosOffset);
         glm_vec3_add(cam->position, cameraPosOffset, cam->position);
     }
+
+    if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS){
+        cam->position[1] += cameraSpeed[1];
+    }
+    if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS){
+        cam->position[1] -= cameraSpeed[1];
+    }
+
+    if(glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS){
+        cam->selectBlockId = DIRT;
+    }
+    if(glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS){
+        cam->selectBlockId = STONE;
+    }
+
 }
 
 
@@ -152,8 +162,8 @@ unsigned int genTextures(const char *firstFileName){
 
 
 void mouseCallback(GLFWwindow *window, double xpos, double ypos){
-    struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
-    struct Camera *cam = camAndChunk->cam;
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct Camera *cam = dataWrapper->cam;
 
     if(cam->firstMouse){
         cam->lastX = xpos;
@@ -189,8 +199,8 @@ void mouseCallback(GLFWwindow *window, double xpos, double ypos){
 
 
 void scrollCallback(GLFWwindow *window, double xoffset, double yoffset){
-    struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
-    struct Camera *cam = camAndChunk->cam;
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct Camera *cam = dataWrapper->cam;
 
     cam->fov -= (float)yoffset;
     if(cam->fov < 1.0f){
@@ -202,10 +212,26 @@ void scrollCallback(GLFWwindow *window, double xoffset, double yoffset){
 }
 
 
-void addCube(GLFWwindow *window){
-    struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
-    struct Chunk *chunk = camAndChunk->chunk;
-    struct Camera *cam = camAndChunk->cam;
+struct ChunkPos getChunkPosFromWorld(GLFWwindow *window){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct ChunkPos chunkPos = {
+        .x = floor(dataWrapper->cam->position[0] / CHUNK_WIDTH),
+        .z = floor(dataWrapper->cam->position[2] / CHUNK_WIDTH)
+    };
+
+    return chunkPos;
+}
+
+
+void addCube(GLFWwindow *window, struct Chunk *chunk){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct Camera *cam = dataWrapper->cam;
+
+    float textureLookupTable[3][4] = {
+        {0, 0, 0, 0},  //Air
+        {0, 15, 0, 14},  //Dirt
+        {1, 15, 1, 15}  //Stone
+    };
 
     ivec3 currentPos;
     currentPos[0] = (int)floor(cam->position[0]);
@@ -246,9 +272,13 @@ void addCube(GLFWwindow *window){
     glm_ivec3_copy(currentPos, lastAirBlock);
 
     for(int i = 0; i < 10; i++){
-        if(chunk->blocks[currentPos[0]][currentPos[1]][currentPos[2]].blockId != AIR){
+        if(chunk->blocks[currentPos[0] % 16][currentPos[1]][currentPos[2] % 16].blockId != AIR){
             printf("currentPos: %d, %d, %d lastAirBlock: %d, %d, %d\n", currentPos[0], currentPos[1], currentPos[2], lastAirBlock[0], lastAirBlock[1], lastAirBlock[2]);
-            chunk->blocks[lastAirBlock[0]][lastAirBlock[1]][lastAirBlock[2]].blockId = DIRT;
+            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].blockId = cam->selectBlockId;
+            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPosition[0] = textureLookupTable[cam->selectBlockId][0];
+            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPosition[1] = textureLookupTable[cam->selectBlockId][1];
+            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPositionTop[0] = textureLookupTable[cam->selectBlockId][2];
+            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPositionTop[1] = textureLookupTable[cam->selectBlockId][3];
             break;
         }
         glm_ivec3_copy(currentPos, lastAirBlock);
@@ -271,10 +301,9 @@ void addCube(GLFWwindow *window){
 }
 
 
-void breakCube(GLFWwindow *window){
-    struct CamAndChunk *camAndChunk = glfwGetWindowUserPointer(window);
-    struct Chunk *chunk = camAndChunk->chunk;
-    struct Camera *cam = camAndChunk->cam;
+void breakCube(GLFWwindow *window, struct Chunk *chunk){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct Camera *cam = dataWrapper->cam;
 
     ivec3 currentPos;
     currentPos[0] = (int)floor(cam->position[0]);
@@ -311,10 +340,9 @@ void breakCube(GLFWwindow *window){
         sideDist[2] = (cam->position[2] - floor(cam->position[2])) * deltaDist[2];
     }
 
-
     for(int i = 0; i < 10; i++){
-        if(chunk->blocks[currentPos[0]][currentPos[1]][currentPos[2]].blockId != AIR){
-            chunk->blocks[currentPos[0]][currentPos[1]][currentPos[2]].blockId = AIR;
+        if(chunk->blocks[currentPos[0] % 16][currentPos[1]][currentPos[2] % 16].blockId != AIR){
+            chunk->blocks[currentPos[0] % 16][currentPos[1]][currentPos[2] % 16].blockId = AIR;
             break;
         }
         if(fabs(sideDist[0]) < fabs(sideDist[1]) && fabs(sideDist[0]) < fabs(sideDist[2])){
@@ -336,7 +364,7 @@ void breakCube(GLFWwindow *window){
 }
 
 
-void createChunk(struct Chunk *chunk){
+void createChunk(struct Chunk *chunk, int xStart, int zStart){
     for(int x = 0; x < 16; x++){
         for(int y = 0; y < 256; y++){
             for(int z = 0; z < 16; z++){
@@ -344,13 +372,15 @@ void createChunk(struct Chunk *chunk){
                     chunk->blocks[x][y][z].blockId = DIRT;
                     chunk->blocks[x][y][z].texPosition[0] = 0;
                     chunk->blocks[x][y][z].texPosition[1] = 15;
+                    chunk->blocks[x][y][z].texPositionTop[0] = 0;
+                    chunk->blocks[x][y][z].texPositionTop[1] = 14;
                 }
                 else{
                     chunk->blocks[x][y][z].blockId = AIR;
                 }
-                chunk->blocks[x][y][z].blockPosition[0] = x;
+                chunk->blocks[x][y][z].blockPosition[0] = x + xStart * 16;
                 chunk->blocks[x][y][z].blockPosition[1] = y;
-                chunk->blocks[x][y][z].blockPosition[2] = z;
+                chunk->blocks[x][y][z].blockPosition[2] = z + zStart * 16;
             }
         }
     }
@@ -360,9 +390,6 @@ void createChunk(struct Chunk *chunk){
 
 
 bool isFaceVisible(struct Chunk *chunk, int x, int y, int z, int tileDir){
-    if(x == 15 || x == 0 || y == 0 || y == 255 || z == 0 || z == 15){
-        return true;
-    }
     if(chunk->blocks[x + 1][y][z].blockId == AIR && tileDir == FACE_RIGHT){
         return true;
     }
@@ -415,7 +442,7 @@ void addFaceToBuffer(struct Vertex *mesh, int *meshIndex, int tileDir, int x, in
              0.5f,  -0.5f,  0.5f, u + tileSize, v + tileSize, //Top Right
              0.5f,  -0.5f,  0.5f, u + tileSize, v + tileSize, //Top Right
             -0.5f,  -0.5f,  0.5f, u, v + tileSize, //Top Left
-            -0.5f,  0.5f, -0.5f, u, v //Bottom Left
+            -0.5f,  -0.5f, -0.5f, u, v //Bottom Left
         };
         for(int i = 0; i < 6; i++){
             mesh[*meshIndex].pos[0] = bottomPos[0 + i * 5] + x;
@@ -511,23 +538,26 @@ struct Mesh createChunkMesh(GLFWwindow *window, struct Chunk *chunk){
                 if(chunk->blocks[x][y][z].blockId == AIR){
                     continue;
                 }
+                int blockXPos = chunk->blocks[x][y][z].blockPosition[0];
+                int blockYPos = chunk->blocks[x][y][z].blockPosition[1];
+                int blockZPos = chunk->blocks[x][y][z].blockPosition[2];
                 if(y == 255 || isFaceVisible(chunk, x, y, z, FACE_TOP)){
-                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_TOP, x, y, z, chunk->blocks[x][y][z].texPosition);
+                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_TOP, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPositionTop);
                 }
                 if(y == 0 || isFaceVisible(chunk, x, y, z, FACE_BOTTOM)){
-                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_BOTTOM, x, y, z, chunk->blocks[x][y][z].texPosition);
+                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_BOTTOM, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
                 if(x == 15 || isFaceVisible(chunk, x, y, z, FACE_RIGHT)){
-                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_RIGHT, x, y, z, chunk->blocks[x][y][z].texPosition);
+                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_RIGHT, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
                 if(x == 0 || isFaceVisible(chunk, x, y, z, FACE_LEFT)){
-                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_LEFT, x, y, z, chunk->blocks[x][y][z].texPosition);
+                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_LEFT, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
                 if(z == 15 || isFaceVisible(chunk, x, y, z, FACE_FRONT)){
-                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_FRONT, x, y, z, chunk->blocks[x][y][z].texPosition);
+                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_FRONT, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
                 if(z == 0 || isFaceVisible(chunk, x, y, z, FACE_BACK)){
-                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_BACK, x, y, z, chunk->blocks[x][y][z].texPosition);
+                    addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_BACK, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
             }
         }
@@ -538,15 +568,98 @@ struct Mesh createChunkMesh(GLFWwindow *window, struct Chunk *chunk){
 }
 
 
+void putDataOntoGPU(GLFWwindow *window, struct Mesh mesh, unsigned int VAO, unsigned VBO){
+    printf("meshIndex size = %d\n", mesh.meshIndex);
+
+    glBindVertexArray(VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    void *ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, MAX_SIZE * sizeof(struct Vertex), GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+    memcpy(ptr, mesh.vertices, mesh.meshIndex * sizeof(struct Vertex));
+    glUnmapBuffer(GL_ARRAY_BUFFER);
+    //glBindBuffer(GL_ARRAY_BUFFER, 0);
+    //glBindVertexArray(0);
+
+}
+
+
+void updateMesh(GLFWwindow *window, struct ChunkMapEntry *chunkMapEntry){
+        printf("running putDataOntoGPU\n");
+        struct Mesh *mesh = malloc(sizeof(struct Mesh));
+        *mesh = createChunkMesh(window, chunkMapEntry->chunk);
+        putDataOntoGPU(window, *mesh, chunkMapEntry->VAO, chunkMapEntry->VBO);
+        free(chunkMapEntry->mesh->vertices);
+        free(chunkMapEntry->mesh);
+        chunkMapEntry->mesh = mesh;
+
+}
+
+
 void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods){
+    struct ChunkPos chunkPos = getChunkPosFromWorld(window);
+    printf("chunkPos.x = %d chunkPos.z = %d\n", chunkPos.x, chunkPos.z);
+    struct ChunkMapEntry *chunkMapEntry = getChunk(window, chunkPos.x, chunkPos.z);
     if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
-        addCube(window);
+        addCube(window, chunkMapEntry->chunk);
+        updateMesh(window, chunkMapEntry);
     }
     else if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
-        breakCube(window);
+        breakCube(window, chunkMapEntry->chunk);
+        updateMesh(window, chunkMapEntry);
     }
 }
 
+
+void setChunk(GLFWwindow *window, struct ChunkMapEntry chunkEntry){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    if(dataWrapper->world->count >= dataWrapper->world->max){
+        return;
+    }
+
+    struct ChunkMapEntry *entryCopy = malloc(sizeof(struct ChunkMapEntry));
+    *entryCopy = chunkEntry;
+
+    hmput(dataWrapper->world->chunkMap, entryCopy->key, entryCopy);
+    dataWrapper->world->count += 1;
+}
+
+
+struct ChunkMapEntry *getChunk(GLFWwindow *window, int x, int z){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    return hmget(dataWrapper->world->chunkMap, ((struct ChunkPos){x, z}));
+}
+
+
+struct ChunkMapEntry createChunkEntry(GLFWwindow *window, int x, int z){
+    unsigned int VAO;
+    glGenVertexArrays(1, &VAO);
+    unsigned int VBO;
+    glGenBuffers(1, &VBO);  //Creates buffer for array data
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);  //binds buffer to the GL_ARRAY_BUFFER
+    glBufferData(GL_ARRAY_BUFFER, MAX_SIZE * sizeof(struct Vertex), NULL, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, pos));  //telling the openGL state box how to read the inputVector
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, uv));
+    glEnableVertexAttribArray(1);
+
+    //struct Chunk chunk;
+    struct Chunk *chunk = malloc(sizeof(struct Chunk));  //A chunk is to big to fit on the stack
+    createChunk(chunk, x, z);
+
+    struct Mesh *mesh = malloc(sizeof(struct Mesh));
+    *mesh = createChunkMesh(window, chunk);
+
+    struct ChunkMapEntry entry = {
+        .key = (struct ChunkPos){x, z},
+        .mesh = mesh,
+        .chunk = chunk,
+        .VAO = VAO,
+        .VBO = VBO
+    };
+
+    return entry;
+}
 
 int main(){
 
@@ -572,8 +685,6 @@ int main(){
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-
-
     struct Camera camera ={
         .position = {0.0f, 21.0f, 3.0f},
         .front = {0.0f, 0.0f, -1.0f},
@@ -584,41 +695,37 @@ int main(){
         .lastX = 400.0f,
         .lastY = 300.0f,
         .firstMouse = 1,
-        .fov = 45.0f
+        .fov = 45.0f,
+        .selectBlockId = DIRT
     };
     float deltaTime = 0.0f;
     float lastFrame = 0.0f;
 
-    //struct Chunk chunk;
-    struct Chunk *chunk = malloc(sizeof(struct Chunk));  //A chunk is to big to fit on the stack
-    createChunk(chunk);
+    struct World world;
+    world.count = 0;
+    world.max = 100;
+    world.entries = malloc(sizeof(struct ChunkMapEntry *) * world.max);
+    world.chunkMap = NULL;
 
-    struct CamAndChunk camAndChunk = {
+    struct DataWrapper dataWrapper = {
         .cam = &camera,
-        .chunk = chunk
+        .world = &world,
     };
 
-    struct Mesh mesh = createChunkMesh(window, chunk);
+    glfwSetWindowUserPointer(window, &dataWrapper);
+    glfwSetCursorPosCallback(window, mouseCallback);
+    glfwSetScrollCallback(window, scrollCallback);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
-    printf("meshIndex = %d\n", mesh.meshIndex);
+    struct ChunkMapEntry entries[world.max];
 
-    for(int i = 0; i < 100; i++){
-        printf("%f, %f, %f, %f, %f\n", mesh.vertices[i].pos[0], mesh.vertices[i].pos[1], mesh.vertices[i].pos[2],mesh.vertices[i].uv[0], mesh.vertices[i].uv[1]);
+    for(int x = 0; x < 8; x++){
+        for(int z = 0; z < 8; z++){
+            entries[x * 8 + z] = createChunkEntry(window, x, z);
+            setChunk(window, entries[x * 8 + z]);
+            putDataOntoGPU(window, *(entries[x * 8 + z].mesh), entries[x * 8 + z].VAO, entries[x * 8 + z].VBO);
+        }
     }
-
-    unsigned int VAO;
-    glGenVertexArrays(1, &VAO);
-    unsigned int VBO;
-    glGenBuffers(1, &VBO);  //Creates buffer for array data
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);  //binds buffer to the GL_ARRAY_BUFFER
-    glBufferData(GL_ARRAY_BUFFER, sizeof(struct Vertex) * mesh.meshIndex, mesh.vertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, pos));  //telling the openGL state box how to read the inputVector
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, uv));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
 
     unsigned int shaderProgram = linkShaders("shaders/3dVertex.glsl", "shaders/3dFragments.glsl");
     glUseProgram(shaderProgram);
@@ -628,16 +735,11 @@ int main(){
     glUniform1f(glGetUniformLocation(shaderProgram, "mixValue"), mixValue);
 
     unsigned int texture = genTextures("textures/craftmineTextures.png");
-    glBindVertexArray(VAO);
 
     int textureUniformLocation = glGetUniformLocation(shaderProgram, "ourTexture");
     glUniform1i(textureUniformLocation, 0);
 
     glEnable(GL_DEPTH_TEST);
-    glfwSetWindowUserPointer(window, &camAndChunk);
-    glfwSetCursorPosCallback(window, mouseCallback);
-    glfwSetScrollCallback(window, scrollCallback);
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
     while(!glfwWindowShouldClose(window)){
         float currentFrame = glfwGetTime();
@@ -664,14 +766,21 @@ int main(){
 
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, (const float *)projection);
 
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, mesh.meshIndex);
-
+        for(int i = 0; i < world.count; i++){
+            unsigned int VAO = world.chunkMap[i].value->VAO;
+            unsigned int VBO = world.chunkMap[i].value->VBO;
+            glBindVertexArray(VAO);
+            glBindBuffer(GL_ARRAY_BUFFER, VBO);  //binds buffer to the GL_ARRAY_BUFFER
+            glDrawArrays(GL_TRIANGLES, 0, world.chunkMap[i].value->mesh->meshIndex);
+        }
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-    free(mesh.vertices);
-    free(chunk);
+    for(int i = 0; i < world.count; i++){
+        free(world.chunkMap[i].value->mesh->vertices);
+        free(world.chunkMap[i].value->mesh);
+        free(world.chunkMap[i].value->chunk);
+    }
     glfwTerminate();
     return 0;
 }
