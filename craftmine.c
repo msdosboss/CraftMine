@@ -19,6 +19,12 @@ void processInput(GLFWwindow *window, float deltaTime){
 
     vec3 cameraSpeed = {5.0f * deltaTime, 5.0f * deltaTime, 5.0f * deltaTime};
 
+    if(glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS){
+        cameraSpeed[0] *= 5;
+        cameraSpeed[1] *= 5;
+        cameraSpeed[2] *= 5;
+    }
+
     if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS){
         vec3 cameraPosOffset;
         glm_vec3_mul(cameraSpeed, cam->front, cameraPosOffset);
@@ -59,7 +65,13 @@ void processInput(GLFWwindow *window, float deltaTime){
     if(glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS){
         cam->selectBlockId = STONE;
     }
+    if(glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS){
+        cam->selectBlockId = WOOD;
+    }
 
+    if(glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS){
+        setVisableChunks(window);
+    }
 }
 
 
@@ -139,6 +151,10 @@ unsigned int genTextures(const char *firstFileName){
 
     int width, height, nChannels;
     unsigned char *data = stbi_load(firstFileName, &width, &height, &nChannels, 0);
+
+    if(!data) {
+         printf("ORCA %s\n", stbi_failure_reason());
+    }
 
     glGenTextures(1, &texture);
 
@@ -223,14 +239,21 @@ struct ChunkPos getChunkPosFromWorld(GLFWwindow *window){
 }
 
 
-void addCube(GLFWwindow *window, struct Chunk *chunk){
+int wrapToChunk(int x){
+    return ((x % 16) + 16) % 16;
+}
+
+
+void addCube(GLFWwindow *window, struct ChunkMapEntry *chunkEntry){
+    struct Chunk *chunk = chunkEntry->chunk;
     struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
     struct Camera *cam = dataWrapper->cam;
 
-    float textureLookupTable[3][4] = {
+    float textureLookupTable[4][4] = {
         {0, 0, 0, 0},  //Air
         {0, 15, 0, 14},  //Dirt
-        {1, 15, 1, 15}  //Stone
+        {1, 15, 1, 15},  //Stone
+        {2, 15, 2, 14}                                 //Wood
     };
 
     ivec3 currentPos;
@@ -272,13 +295,13 @@ void addCube(GLFWwindow *window, struct Chunk *chunk){
     glm_ivec3_copy(currentPos, lastAirBlock);
 
     for(int i = 0; i < 10; i++){
-        if(chunk->blocks[currentPos[0] % 16][currentPos[1]][currentPos[2] % 16].blockId != AIR){
+        if(chunk->blocks[wrapToChunk(currentPos[0])][currentPos[1]][wrapToChunk(currentPos[2])].blockId != AIR){
             printf("currentPos: %d, %d, %d lastAirBlock: %d, %d, %d\n", currentPos[0], currentPos[1], currentPos[2], lastAirBlock[0], lastAirBlock[1], lastAirBlock[2]);
-            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].blockId = cam->selectBlockId;
-            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPosition[0] = textureLookupTable[cam->selectBlockId][0];
-            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPosition[1] = textureLookupTable[cam->selectBlockId][1];
-            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPositionTop[0] = textureLookupTable[cam->selectBlockId][2];
-            chunk->blocks[lastAirBlock[0] % 16][lastAirBlock[1]][lastAirBlock[2] % 16].texPositionTop[1] = textureLookupTable[cam->selectBlockId][3];
+            chunk->blocks[wrapToChunk(lastAirBlock[0])][lastAirBlock[1]][wrapToChunk(lastAirBlock[2])].blockId = cam->selectBlockId;
+            chunk->blocks[wrapToChunk(lastAirBlock[0])][lastAirBlock[1]][wrapToChunk(lastAirBlock[2])].texPosition[0] = textureLookupTable[cam->selectBlockId][0];
+            chunk->blocks[wrapToChunk(lastAirBlock[0])][lastAirBlock[1]][wrapToChunk(lastAirBlock[2])].texPosition[1] = textureLookupTable[cam->selectBlockId][1];
+            chunk->blocks[wrapToChunk(lastAirBlock[0])][lastAirBlock[1]][wrapToChunk(lastAirBlock[2])].texPositionTop[0] = textureLookupTable[cam->selectBlockId][2];
+            chunk->blocks[wrapToChunk(lastAirBlock[0])][lastAirBlock[1]][wrapToChunk(lastAirBlock[2])].texPositionTop[1] = textureLookupTable[cam->selectBlockId][3];
             break;
         }
         glm_ivec3_copy(currentPos, lastAirBlock);
@@ -301,7 +324,8 @@ void addCube(GLFWwindow *window, struct Chunk *chunk){
 }
 
 
-void breakCube(GLFWwindow *window, struct Chunk *chunk){
+void breakCube(GLFWwindow *window, struct ChunkMapEntry *chunkEntry){
+    struct Chunk *chunk = chunkEntry->chunk;
     struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
     struct Camera *cam = dataWrapper->cam;
 
@@ -341,8 +365,8 @@ void breakCube(GLFWwindow *window, struct Chunk *chunk){
     }
 
     for(int i = 0; i < 10; i++){
-        if(chunk->blocks[currentPos[0] % 16][currentPos[1]][currentPos[2] % 16].blockId != AIR){
-            chunk->blocks[currentPos[0] % 16][currentPos[1]][currentPos[2] % 16].blockId = AIR;
+        if(chunk->blocks[wrapToChunk(currentPos[0])][currentPos[1]][wrapToChunk(currentPos[2])].blockId != AIR){
+            chunk->blocks[wrapToChunk(currentPos[0])][currentPos[1]][wrapToChunk(currentPos[2])].blockId = AIR;
             break;
         }
         if(fabs(sideDist[0]) < fabs(sideDist[1]) && fabs(sideDist[0]) < fabs(sideDist[2])){
@@ -569,8 +593,6 @@ struct Mesh createChunkMesh(GLFWwindow *window, struct Chunk *chunk){
 
 
 void putDataOntoGPU(GLFWwindow *window, struct Mesh mesh, unsigned int VAO, unsigned VBO){
-    printf("meshIndex size = %d\n", mesh.meshIndex);
-
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
@@ -600,11 +622,11 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods){
     printf("chunkPos.x = %d chunkPos.z = %d\n", chunkPos.x, chunkPos.z);
     struct ChunkMapEntry *chunkMapEntry = getChunk(window, chunkPos.x, chunkPos.z);
     if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
-        addCube(window, chunkMapEntry->chunk);
+        addCube(window, chunkMapEntry);
         updateMesh(window, chunkMapEntry);
     }
     else if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
-        breakCube(window, chunkMapEntry->chunk);
+        breakCube(window, chunkMapEntry);
         updateMesh(window, chunkMapEntry);
     }
 }
@@ -661,6 +683,34 @@ struct ChunkMapEntry createChunkEntry(GLFWwindow *window, int x, int z){
     return entry;
 }
 
+
+void setVisableChunks(GLFWwindow *window){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct ChunkMapEntry **visableChunks = dataWrapper->visableChunks;
+    struct ChunkMapEntry *entries = dataWrapper->entries;
+    struct World *world = dataWrapper->world;
+    int *entriesIndex = &(dataWrapper->entriesIndex);
+
+    struct ChunkPos pos = getChunkPosFromWorld(window);
+
+    int i = 0;
+    for(int x = pos.x - RENDER_DISTANCE / 2; x < pos.x + RENDER_DISTANCE / 2; x++){
+        for(int z = pos.z - RENDER_DISTANCE / 2; z < pos.z + RENDER_DISTANCE / 2; z++){
+            if(*entriesIndex >= world->max){
+                break;
+            }
+            if(getChunk(window, x, z) == NULL){
+                entries[*entriesIndex] = createChunkEntry(window, x, z);
+                setChunk(window, entries[*entriesIndex]);
+                putDataOntoGPU(window, *(entries[*entriesIndex].mesh), entries[*entriesIndex].VAO, entries[*entriesIndex].VBO);
+                (*entriesIndex)++;
+            }
+            visableChunks[i++] = getChunk(window, x, z);
+        }
+    }
+}
+
+
 int main(){
 
     glfwInit();
@@ -703,13 +753,15 @@ int main(){
 
     struct World world;
     world.count = 0;
-    world.max = 100;
-    world.entries = malloc(sizeof(struct ChunkMapEntry *) * world.max);
+    world.max = 1000;
     world.chunkMap = NULL;
 
     struct DataWrapper dataWrapper = {
         .cam = &camera,
         .world = &world,
+        .visableChunks = malloc(sizeof(struct ChunkMapEntry) * RENDER_DISTANCE * RENDER_DISTANCE),
+        .entries = malloc(sizeof(struct ChunkMapEntry) * world.max),
+        .entriesIndex = 0
     };
 
     glfwSetWindowUserPointer(window, &dataWrapper);
@@ -717,15 +769,7 @@ int main(){
     glfwSetScrollCallback(window, scrollCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
-    struct ChunkMapEntry entries[world.max];
-
-    for(int x = 0; x < 8; x++){
-        for(int z = 0; z < 8; z++){
-            entries[x * 8 + z] = createChunkEntry(window, x, z);
-            setChunk(window, entries[x * 8 + z]);
-            putDataOntoGPU(window, *(entries[x * 8 + z].mesh), entries[x * 8 + z].VAO, entries[x * 8 + z].VBO);
-        }
-    }
+    setVisableChunks(window);
 
     unsigned int shaderProgram = linkShaders("shaders/3dVertex.glsl", "shaders/3dFragments.glsl");
     glUseProgram(shaderProgram);
@@ -766,12 +810,12 @@ int main(){
 
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, (const float *)projection);
 
-        for(int i = 0; i < world.count; i++){
-            unsigned int VAO = world.chunkMap[i].value->VAO;
-            unsigned int VBO = world.chunkMap[i].value->VBO;
+        for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
+            unsigned int VAO = dataWrapper.visableChunks[i]->VAO;
+            unsigned int VBO = dataWrapper.visableChunks[i]->VBO;
             glBindVertexArray(VAO);
             glBindBuffer(GL_ARRAY_BUFFER, VBO);  //binds buffer to the GL_ARRAY_BUFFER
-            glDrawArrays(GL_TRIANGLES, 0, world.chunkMap[i].value->mesh->meshIndex);
+            glDrawArrays(GL_TRIANGLES, 0, dataWrapper.visableChunks[i]->mesh->meshIndex);
         }
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -780,6 +824,8 @@ int main(){
         free(world.chunkMap[i].value->mesh->vertices);
         free(world.chunkMap[i].value->mesh);
         free(world.chunkMap[i].value->chunk);
+        free(world.chunkMap[i].value);
+        //free(dataWrapper.visableChunks);
     }
     glfwTerminate();
     return 0;

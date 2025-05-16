@@ -12,6 +12,7 @@
 #define AIR 0
 #define DIRT 1
 #define STONE 2
+#define WOOD 3
 
 #define FACE_TOP 0
 #define FACE_BOTTOM 1
@@ -23,6 +24,8 @@
 #define CHUNK_WIDTH 16
 
 #define MAX_SIZE 256 * 16 * 16 * 6 * 5
+
+#define RENDER_DISTANCE 10
 
 struct Camera {
   vec3 position;
@@ -50,6 +53,9 @@ struct Mesh {
 struct DataWrapper {
   struct Camera *cam;
   struct World *world;
+  struct ChunkMapEntry **visableChunks;
+  struct ChunkMapEntry *entries;
+  int entriesIndex;
 };
 
 struct Block {
@@ -82,11 +88,11 @@ struct ChunkMapEntryPtrPair {
 
 struct World {
   struct ChunkMapEntryPtrPair *chunkMap;
-  struct ChunkMapEntry **entries;
   int count;
   int max;
 };
 
 void setChunk(GLFWwindow *window, struct ChunkMapEntry chunkEntry);
 struct ChunkMapEntry *getChunk(GLFWwindow *window, int x, int z);
+void setVisableChunks(GLFWwindow *window);
 #endif
