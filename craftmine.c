@@ -789,6 +789,10 @@ void setVisableChunks(GLFWwindow *window){
             else if(chunkFromDrive != NULL){
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 visableChunks[i]->chunk = chunkFromDrive;
+                visableChunks[i]->mesh = malloc(sizeof(struct Mesh));
+                *visableChunks[i]->mesh = createChunkMesh(window, visableChunks[i]->chunk);
+                visableChunks[i]->key.x = x;
+                visableChunks[i]->key.z = z;
                 setChunk(window, *(visableChunks[i]));
                 putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO);
                 i++;
