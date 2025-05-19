@@ -34,6 +34,7 @@ struct Chunk *readChunk(int x, int z){
 }
 
 /*int main(){
+>>>>>>> c0ac3a3 (Had problems removing large files, almost lost all my work luckily my vim .swp file saved me)
     struct Chunk *chunk = malloc(sizeof(struct Chunk));
     chunk->blocks[0][0][0].blockId = 3;
     writeChunk(chunk, 0, 0);

@@ -742,7 +742,6 @@ void removeChunkEntry(struct ChunkMapEntry *chunkEntry){
 }
 
 
-
 void removeNoneVisableChunks(GLFWwindow *window){
     struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
     struct ChunkMapEntryPtrPair *chunkMap = dataWrapper->world->chunkMap;
