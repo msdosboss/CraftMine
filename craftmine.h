@@ -23,7 +23,7 @@
 
 #define CHUNK_WIDTH 16
 
-#define MAX_SIZE 256 * 16 * 16 * 6 * 5
+#define MAX_SIZE 256 * 16 * 16 * 6
 
 #define RENDER_DISTANCE 8
 
@@ -64,7 +64,8 @@ struct ChunkMapEntry {
   struct ChunkPos key;
   struct Mesh *mesh;
   struct Chunk *chunk;
-  unsigned int VBO;
+  unsigned int VBO[3];
+  int vboIndex;
   unsigned int VAO;
 };
 

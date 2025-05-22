@@ -1,35 +1,60 @@
 #include "fileio.h"
 
-void writeChunk(struct Chunk *chunk, int x, int z){
+void writeChunk(struct Chunk *chunk, int x, int z) {
     char chunkName[50];
     sprintf(chunkName, "chunkBinData/chunkBinx%dz%d.bin", x, z);
 
     FILE *fp = fopen(chunkName, "wb");
+    if (!fp) {
+        perror("Failed to open chunk file for writing");
+        return;
+    }
 
-    fwrite(chunk, sizeof(struct Chunk), 1, fp);
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 256; j++) {
+            for (int k = 0; k < 16; k++) {
+                struct Block *b = &chunk->blocks[i][j][k];
+
+                fwrite(&b->blockId, sizeof(int), 1, fp);
+                fwrite(b->blockPosition, sizeof(float), 3, fp);
+                fwrite(b->texPosition, sizeof(float), 2, fp);
+                fwrite(b->texPositionTop, sizeof(float), 2, fp);
+            }
+        }
+    }
 
     fclose(fp);
 }
 
-struct Chunk *readChunk(int x, int z){
+struct Chunk *readChunk(int x, int z) {
     char chunkName[50];
     sprintf(chunkName, "chunkBinData/chunkBinx%dz%d.bin", x, z);
 
     FILE *fp = fopen(chunkName, "rb");
-
-    if(fp == NULL){ //This will happen a lot because I will have to check if a chunk exists in files before trying to make a new one
+    if (!fp) {
         return NULL;
     }
 
     struct Chunk *chunk = malloc(sizeof(struct Chunk));
-    size_t success = fread(chunk, sizeof(struct Chunk), 1, fp);
+    if (!chunk) {
+        fclose(fp);
+        return NULL;
+    }
 
-    if(!success){
-        fprintf(stderr, "failed to read %s", chunkName);
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 256; j++) {
+            for (int k = 0; k < 16; k++) {
+                struct Block *b = &chunk->blocks[i][j][k];
+
+                fread(&b->blockId, sizeof(int), 1, fp);
+                fread(b->blockPosition, sizeof(float), 3, fp);
+                fread(b->texPosition, sizeof(float), 2, fp);
+                fread(b->texPositionTop, sizeof(float), 2, fp);
+            }
+        }
     }
 
     fclose(fp);
-
     return chunk;
 }
 

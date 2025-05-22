@@ -633,24 +633,39 @@ struct Mesh createChunkMesh(GLFWwindow *window, struct Chunk *chunk){
 }
 
 
-void putDataOntoGPU(GLFWwindow *window, struct Mesh mesh, unsigned int VAO, unsigned VBO){
+void putDataOntoGPU(GLFWwindow *window, struct Mesh mesh, unsigned int VAO, unsigned *VBOArray, int *VBOIndex){
     glBindVertexArray(VAO);
 
+    *VBOIndex = (*VBOIndex + 1) % 3;
+    unsigned int VBO = VBOArray[*VBOIndex];
+
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, pos));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, uv));
+    glEnableVertexAttribArray(1);
+
     void *ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, MAX_SIZE * sizeof(struct Vertex), GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+
     memcpy(ptr, mesh.vertices, mesh.meshIndex * sizeof(struct Vertex));
     glUnmapBuffer(GL_ARRAY_BUFFER);
-    //glBindBuffer(GL_ARRAY_BUFFER, 0);
-    //glBindVertexArray(0);
-
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    GLenum err;
+    while((err = glGetError()) != GL_NO_ERROR) {
+        fprintf(stderr, "Post-update GL Error: %x\n", err);
+    }
 }
 
 
 void updateMesh(GLFWwindow *window, struct ChunkMapEntry *chunkMapEntry){
-        printf("running putDataOntoGPU\n");
         struct Mesh *mesh = malloc(sizeof(struct Mesh));
         *mesh = createChunkMesh(window, chunkMapEntry->chunk);
-        putDataOntoGPU(window, *mesh, chunkMapEntry->VAO, chunkMapEntry->VBO);
+        putDataOntoGPU(window, *mesh, chunkMapEntry->VAO, chunkMapEntry->VBO, &chunkMapEntry->vboIndex);
+
+        glFinish();
+
         free(chunkMapEntry->mesh->vertices);
         free(chunkMapEntry->mesh);
         chunkMapEntry->mesh = mesh;
@@ -693,18 +708,28 @@ struct ChunkMapEntry *getChunk(GLFWwindow *window, int x, int z){
 }
 
 
-struct ChunkMapEntry createChunkEntry(GLFWwindow *window, int x, int z){
-    unsigned int VAO;
-    glGenVertexArrays(1, &VAO);
-    unsigned int VBO;
-    glGenBuffers(1, &VBO);  //Creates buffer for array data
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);  //binds buffer to the GL_ARRAY_BUFFER
-    glBufferData(GL_ARRAY_BUFFER, MAX_SIZE * sizeof(struct Vertex), NULL, GL_DYNAMIC_DRAW);
+void initChunkGraphics(unsigned int *VAO, unsigned int *VBO){
+    glGenVertexArrays(1, VAO);
+    glBindVertexArray(*VAO);
+    glGenBuffers(3, VBO);  //Creates buffer for array data
+    for(int i = 0; i < 3; i++){
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[i]);  //binds buffer to the GL_ARRAY_BUFFER
+        glBufferData(GL_ARRAY_BUFFER, MAX_SIZE * sizeof(struct Vertex), NULL, GL_DYNAMIC_DRAW);
+    }
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, pos));  //telling the openGL state box how to read the inputVector
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(struct Vertex), (void*)offsetof(struct Vertex, uv));
     glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+
+struct ChunkMapEntry createChunkEntry(GLFWwindow *window, int x, int z){
+    unsigned int VAO;
+    unsigned int VBO[3];
+
+    initChunkGraphics(&VAO, VBO);
 
     //struct Chunk chunk;
     struct Chunk *chunk = malloc(sizeof(struct Chunk));  //A chunk is to big to fit on the stack
@@ -723,21 +748,30 @@ struct ChunkMapEntry createChunkEntry(GLFWwindow *window, int x, int z){
         .mesh = mesh,
         .chunk = chunk,
         .VAO = VAO,
-        .VBO = VBO
     };
+    entry.VBO[0] = VBO[0];
+    entry.VBO[1] = VBO[1];
+    entry.VBO[2] = VBO[2];
+    entry.vboIndex = 0;
 
     return entry;
 }
 
 
-void removeChunkEntry(struct ChunkMapEntry *chunkEntry){
-    glDeleteBuffers(1, &(chunkEntry->VBO));
+void removeChunkEntry(GLFWwindow *window, struct ChunkMapEntry *chunkEntry){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct ChunkMapEntryPtrPair *chunkMap = dataWrapper->world->chunkMap;
+    for(int i = 0; i < 3; i++){
+        glDeleteBuffers(1, &(chunkEntry->VBO[i]));
+    }
     glDeleteVertexArrays(1, &(chunkEntry->VAO));
 
     writeChunk(chunkEntry->chunk, chunkEntry->key.x, chunkEntry->key.z);
 
     free(chunkEntry->chunk);
+    free(chunkEntry->mesh->vertices);
     free(chunkEntry->mesh);
+    hmdel(chunkMap, chunkEntry->key);
     free(chunkEntry);
 }
 
@@ -760,8 +794,23 @@ void removeNoneVisableChunks(GLFWwindow *window){
         }
     }
     for(int i = 0; i < arrlen(toRemove); i++){
-            removeChunkEntry(chunkMap[toRemove[i]].value);
+            removeChunkEntry(window, chunkMap[toRemove[i]].value);
     }
+
+    arrfree(toRemove);
+}
+
+
+void createChunkEntryFromDisk(GLFWwindow *window, struct ChunkMapEntry *visableChunk, struct Chunk *chunkFromDrive, int x, int z){
+    visableChunk->chunk = chunkFromDrive;
+    visableChunk->mesh = malloc(sizeof(struct Mesh));
+    *visableChunk->mesh = createChunkMesh(window, visableChunk->chunk);
+    visableChunk->key.x = x;
+    visableChunk->key.z = z;
+    visableChunk->vboIndex = 0;
+    initChunkGraphics(&visableChunk->VAO, visableChunk->VBO);
+    setChunk(window, *(visableChunk));
+    putDataOntoGPU(window, *visableChunk->mesh, visableChunk->VAO, visableChunk->VBO, &visableChunk->vboIndex);
 
 }
 
@@ -775,9 +824,6 @@ void setVisableChunks(GLFWwindow *window){
 
     struct ChunkPos pos = getChunkPosFromWorld(window);
 
-    printf("hello world\n");
-    fflush(stdout);
-
     int i = 0;
     for(int x = pos.x - RENDER_DISTANCE / 2; x < pos.x + RENDER_DISTANCE / 2; x++){
         for(int z = pos.z - RENDER_DISTANCE / 2; z < pos.z + RENDER_DISTANCE / 2; z++){
@@ -787,29 +833,21 @@ void setVisableChunks(GLFWwindow *window){
                 visableChunks[i++] = entry;
             }
             else if(chunkFromDrive != NULL){
+                printf("loading chunk from drive\n");
+                fflush(stdout);
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
-                visableChunks[i]->chunk = chunkFromDrive;
-                visableChunks[i]->mesh = malloc(sizeof(struct Mesh));
-                *visableChunks[i]->mesh = createChunkMesh(window, visableChunks[i]->chunk);
-                visableChunks[i]->key.x = x;
-                visableChunks[i]->key.z = z;
-                setChunk(window, *(visableChunks[i]));
-                putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO);
+                createChunkEntryFromDisk(window, visableChunks[i], chunkFromDrive, x, z);
                 i++;
-
             }
             else{
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 *visableChunks[i] = createChunkEntry(window, x, z);
                 setChunk(window, *(visableChunks[i]));
-                putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO);
+                putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO, &visableChunks[i]->vboIndex);
                 i++;
             }
         }
     }
-
-    printf("goodbye world\n");
-    fflush(stdout);
 }
 
 
@@ -871,8 +909,6 @@ int main(){
     glfwSetScrollCallback(window, scrollCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
-    setVisableChunks(window);
-
     unsigned int shaderProgram = linkShaders("shaders/3dVertex.glsl", "shaders/3dFragments.glsl");
     glUseProgram(shaderProgram);
 
@@ -887,6 +923,8 @@ int main(){
 
     glEnable(GL_DEPTH_TEST);
 
+    //setVisableChunks(window);
+    setVisableChunks(window);
     while(!glfwWindowShouldClose(window)){
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
@@ -913,22 +951,29 @@ int main(){
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, (const float *)projection);
 
         for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
+            if(!dataWrapper.visableChunks[i] || !dataWrapper.visableChunks[i]->mesh){
+                continue;
+            }
             unsigned int VAO = dataWrapper.visableChunks[i]->VAO;
-            unsigned int VBO = dataWrapper.visableChunks[i]->VBO;
+            unsigned int VBO = dataWrapper.visableChunks[i]->VBO[dataWrapper.visableChunks[i]->vboIndex];
             glBindVertexArray(VAO);
             glBindBuffer(GL_ARRAY_BUFFER, VBO);  //binds buffer to the GL_ARRAY_BUFFER
-            glDrawArrays(GL_TRIANGLES, 0, dataWrapper.visableChunks[i]->mesh->meshIndex);
+            GLenum err;
+            /*while ((err = glGetError()) != GL_NO_ERROR) {
+                printf("GL Error: %x\n", err);
+            }*/
+            if(dataWrapper.visableChunks[i]->mesh->meshIndex < MAX_SIZE && dataWrapper.visableChunks[i]->mesh->meshIndex > 0){
+                glDrawArrays(GL_TRIANGLES, 0, dataWrapper.visableChunks[i]->mesh->meshIndex);
+            }
         }
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-    for(int i = 0; i < world.count; i++){
-        free(world.chunkMap[i].value->mesh->vertices);
-        free(world.chunkMap[i].value->mesh);
-        free(world.chunkMap[i].value->chunk);
-        free(world.chunkMap[i].value);
-        //free(dataWrapper.visableChunks);
+    for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
+        removeChunkEntry(window, dataWrapper.visableChunks[i]);
     }
+    free(dataWrapper.visableChunks);
+
     glfwTerminate();
     return 0;
 }
