@@ -80,7 +80,7 @@ struct World {
   int max;
 };
 
-void setChunk(GLFWwindow *window, struct ChunkMapEntry chunkEntry);
+void setChunk(GLFWwindow *window, struct ChunkMapEntry *chunkEntry);
 struct ChunkMapEntry *getChunk(GLFWwindow *window, int x, int z);
 void setVisableChunks(GLFWwindow *window);
 void setBlock(struct Chunk *chunk, int blockId, int x, int y, int z);

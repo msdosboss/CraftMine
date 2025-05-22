@@ -688,16 +688,13 @@ void mouseButtonCallback(GLFWwindow *window, int button, int action, int mods){
 }
 
 
-void setChunk(GLFWwindow *window, struct ChunkMapEntry chunkEntry){
+void setChunk(GLFWwindow *window, struct ChunkMapEntry *chunkEntry){
     struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
     if(dataWrapper->world->count >= dataWrapper->world->max){
         return;
     }
 
-    struct ChunkMapEntry *entryCopy = malloc(sizeof(struct ChunkMapEntry));
-    *entryCopy = chunkEntry;
-
-    hmput(dataWrapper->world->chunkMap, entryCopy->key, entryCopy);
+    hmput(dataWrapper->world->chunkMap, chunkEntry->key, chunkEntry);
     dataWrapper->world->count += 1;
 }
 
@@ -809,7 +806,7 @@ void createChunkEntryFromDisk(GLFWwindow *window, struct ChunkMapEntry *visableC
     visableChunk->key.z = z;
     visableChunk->vboIndex = 0;
     initChunkGraphics(&visableChunk->VAO, visableChunk->VBO);
-    setChunk(window, *(visableChunk));
+    setChunk(window, visableChunk);
     putDataOntoGPU(window, *visableChunk->mesh, visableChunk->VAO, visableChunk->VBO, &visableChunk->vboIndex);
 
 }
@@ -831,6 +828,9 @@ void setVisableChunks(GLFWwindow *window){
             struct ChunkMapEntry *entry = getChunk(window, x, z);
             if(entry != NULL){
                 visableChunks[i++] = entry;
+                if(chunkFromDrive != NULL){
+                    free(chunkFromDrive);
+                }
             }
             else if(chunkFromDrive != NULL){
                 printf("loading chunk from drive\n");
@@ -842,7 +842,7 @@ void setVisableChunks(GLFWwindow *window){
             else{
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 *visableChunks[i] = createChunkEntry(window, x, z);
-                setChunk(window, *(visableChunks[i]));
+                setChunk(window, visableChunks[i]);
                 putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO, &visableChunks[i]->vboIndex);
                 i++;
             }
