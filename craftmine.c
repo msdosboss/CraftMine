@@ -92,6 +92,7 @@ char *readShaderFile(const char *fileName){
     fileText[size] = '\0';
 
     fclose(file);
+    free(fileText);
     return fileText;
 }
 
@@ -829,19 +830,19 @@ void setVisableChunks(GLFWwindow *window){
             struct ChunkMapEntry *entry = getChunk(window, x, z);
             if(entry != NULL){
                 visableChunks[i] = entry;
-                if(x == pos.x - RENDER_DISTANCE / 2 || x == pos.x + RENDER_DISTANCE / 2 || z == pos.z - RENDER_DISTANCE / 2 || z == pos.z + RENDER_DISTANCE / 2){
-                    visableChunks[i++]->dirtyFlag = true;
+                if(x == (pos.x - RENDER_DISTANCE / 2) || x == (pos.x + RENDER_DISTANCE / 2 - 1)|| z == (pos.z - RENDER_DISTANCE / 2) || z == (pos.z + RENDER_DISTANCE / 2 - 1)){
+                    visableChunks[i]->dirtyFlag = true;
+
                 }
                 else{
-                    visableChunks[i++]->dirtyFlag = false;
+                    visableChunks[i]->dirtyFlag = true;
                 }
                 if(chunkFromDrive != NULL){
                     free(chunkFromDrive);
                 }
+                i++;
             }
             else if(chunkFromDrive != NULL){
-                printf("loading chunk from drive\n");
-                fflush(stdout);
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 createChunkEntryFromDisk(window, visableChunks[i], chunkFromDrive, x, z);
                 visableChunks[i]->dirtyFlag = true;
@@ -857,7 +858,7 @@ void setVisableChunks(GLFWwindow *window){
         }
     }
     for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
-        if(visableChunks[i]->dirtyFlag == true){
+        if(visableChunks[i]->dirtyFlag == true || true){
             struct Mesh *mesh = malloc(sizeof(struct Mesh));
             *mesh = createChunkMesh(window, visableChunks[i]);
             visableChunks[i]->mesh = mesh;
@@ -918,7 +919,7 @@ int main(){
     struct DataWrapper dataWrapper = {
         .cam = &camera,
         .world = &world,
-        .visableChunks = malloc(sizeof(struct ChunkMapEntry) * RENDER_DISTANCE * RENDER_DISTANCE),
+        .visableChunks = malloc(sizeof(struct ChunkMapEntry *) * RENDER_DISTANCE * RENDER_DISTANCE),
     };
 
     glfwSetWindowUserPointer(window, &dataWrapper);
@@ -942,7 +943,17 @@ int main(){
 
     //setVisableChunks(window);
     setVisableChunks(window);
+
+    struct ChunkPos previousChunkPos = getChunkPosFromWorld(window);
+
     while(!glfwWindowShouldClose(window)){
+        struct ChunkPos currentChunkPos = getChunkPosFromWorld(window);
+
+        if(currentChunkPos.x != previousChunkPos.x || currentChunkPos.z != previousChunkPos.z){
+            setVisableChunks(window);
+        }
+        previousChunkPos = getChunkPosFromWorld(window);
+
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
