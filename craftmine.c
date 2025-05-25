@@ -450,26 +450,32 @@ void createChunk(struct Chunk *chunk, int xStart, int zStart){
 
 
 
-bool isFaceVisible(struct Chunk *chunk, int x, int y, int z, int tileDir){
-    if(x <= 0 || x >= 15 || y <= 0 || y >= 256 || z <= 0 || z >= 15){
+bool isFaceVisible(GLFWwindow *window, struct ChunkMapEntry *chunkMapEntry, int x, int y, int z, int tileDir){
+    struct DataWrapper *dataWrapper = glfwGetWindowUserPointer(window);
+    struct ChunkMapEntryPtrPair *chunkMap = dataWrapper->world->chunkMap;
+    struct Chunk *chunk = chunkMapEntry->chunk;
+
+    if(y <= 0 || y >= 255){
         return true;
     }
-    if(chunk->blocks[x + 1][y][z].blockId == AIR && tileDir == FACE_RIGHT){
-        return true;
+
+    int chunkOffsetX = (x < 0) ? -1 : (x > 15) ? 1 : 0;
+    int chunkOffsetZ = (z < 0) ? -1 : (z > 15) ? 1 : 0;
+
+    if(chunkOffsetX != 0 || chunkOffsetZ != 0){
+        struct ChunkMapEntry *neighbor = getChunk(window, chunkMapEntry->key.x + chunkOffsetX, chunkMapEntry->key.z + chunkOffsetZ);
+        if(neighbor == NULL){
+            return true;
+        }
+        if(neighbor->chunk->blocks[x & 0xf][y][z & 0xf].blockId == AIR){
+            return true;
+        }
+        else{
+            return false;
+        }
     }
-    if(chunk->blocks[x - 1][y][z].blockId == AIR && tileDir == FACE_LEFT){
-        return true;
-    }
-    if(chunk->blocks[x][y + 1][z].blockId == AIR && tileDir == FACE_TOP){
-        return true;
-    }
-    if(chunk->blocks[x][y - 1][z].blockId == AIR && tileDir == FACE_BOTTOM){
-        return true;
-    }
-    if(chunk->blocks[x][y][z + 1].blockId == AIR && tileDir == FACE_FRONT){
-        return true;
-    }
-    if(chunk->blocks[x][y][z - 1].blockId == AIR && tileDir == FACE_BACK){
+
+    if(chunk->blocks[x][y][z].blockId == AIR){
         return true;
     }
     return false;
@@ -592,7 +598,8 @@ void addFaceToBuffer(struct Vertex *mesh, int *meshIndex, int tileDir, int x, in
 }
 
 
-struct Mesh createChunkMesh(GLFWwindow *window, struct Chunk *chunk){
+struct Mesh createChunkMesh(GLFWwindow *window, struct ChunkMapEntry *chunkEntry){
+    struct Chunk *chunk = chunkEntry->chunk;
     struct Mesh mesh;
     mesh.vertices = malloc(sizeof(struct Vertex) * 16 * 256 * 16 * 6);    //this would be to small if I added every face in a chunk to it but at most only like 10% of the faces should be visable at a time
     mesh.meshIndex = 0;
@@ -606,22 +613,22 @@ struct Mesh createChunkMesh(GLFWwindow *window, struct Chunk *chunk){
                 int blockYPos = chunk->blocks[x][y][z].blockPosition[1];
                 int blockZPos = chunk->blocks[x][y][z].blockPosition[2];
 
-                if(y == 255 || isFaceVisible(chunk, x, y, z, FACE_TOP)){
+                if(isFaceVisible(window, chunkEntry, x, y + 1, z, FACE_TOP)){
                     addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_TOP, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPositionTop);
                 }
-                if(y == 0 || isFaceVisible(chunk, x, y, z, FACE_BOTTOM)){
+                if(isFaceVisible(window, chunkEntry, x, y - 1, z, FACE_BOTTOM)){
                     addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_BOTTOM, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
-                if(x == 15 || isFaceVisible(chunk, x, y, z, FACE_RIGHT)){
+                if(isFaceVisible(window, chunkEntry, x + 1, y, z, FACE_RIGHT)){
                     addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_RIGHT, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
-                if(x == 0 || isFaceVisible(chunk, x, y, z, FACE_LEFT)){
+                if(isFaceVisible(window, chunkEntry, x - 1, y, z, FACE_LEFT)){
                     addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_LEFT, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
-                if(z == 15 || isFaceVisible(chunk, x, y, z, FACE_FRONT)){
+                if(isFaceVisible(window, chunkEntry, x, y, z + 1, FACE_FRONT)){
                     addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_FRONT, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
-                if(z == 0 || isFaceVisible(chunk, x, y, z, FACE_BACK)){
+                if(isFaceVisible(window, chunkEntry, x, y, z - 1, FACE_BACK)){
                     addFaceToBuffer(mesh.vertices, &mesh.meshIndex, FACE_BACK, blockXPos, blockYPos, blockZPos, chunk->blocks[x][y][z].texPosition);
                 }
             }
@@ -661,7 +668,7 @@ void putDataOntoGPU(GLFWwindow *window, struct Mesh mesh, unsigned int VAO, unsi
 
 void updateMesh(GLFWwindow *window, struct ChunkMapEntry *chunkMapEntry){
         struct Mesh *mesh = malloc(sizeof(struct Mesh));
-        *mesh = createChunkMesh(window, chunkMapEntry->chunk);
+        *mesh = createChunkMesh(window, chunkMapEntry);
         putDataOntoGPU(window, *mesh, chunkMapEntry->VAO, chunkMapEntry->VBO, &chunkMapEntry->vboIndex);
 
         glFinish();
@@ -737,15 +744,12 @@ struct ChunkMapEntry createChunkEntry(GLFWwindow *window, int x, int z){
     memset(chunk->blocks, 0, sizeof(chunk->blocks));
     createChunk(chunk, x, z);
 
-    struct Mesh *mesh = malloc(sizeof(struct Mesh));
-    *mesh = createChunkMesh(window, chunk);
-
     struct ChunkMapEntry entry = {
         .key = (struct ChunkPos){x, z},
-        .mesh = mesh,
         .chunk = chunk,
         .VAO = VAO,
     };
+
     entry.VBO[0] = VBO[0];
     entry.VBO[1] = VBO[1];
     entry.VBO[2] = VBO[2];
@@ -800,14 +804,11 @@ void removeNoneVisableChunks(GLFWwindow *window){
 
 void createChunkEntryFromDisk(GLFWwindow *window, struct ChunkMapEntry *visableChunk, struct Chunk *chunkFromDrive, int x, int z){
     visableChunk->chunk = chunkFromDrive;
-    visableChunk->mesh = malloc(sizeof(struct Mesh));
-    *visableChunk->mesh = createChunkMesh(window, visableChunk->chunk);
     visableChunk->key.x = x;
     visableChunk->key.z = z;
     visableChunk->vboIndex = 0;
     initChunkGraphics(&visableChunk->VAO, visableChunk->VBO);
     setChunk(window, visableChunk);
-    putDataOntoGPU(window, *visableChunk->mesh, visableChunk->VAO, visableChunk->VBO, &visableChunk->vboIndex);
 
 }
 
@@ -827,7 +828,13 @@ void setVisableChunks(GLFWwindow *window){
             struct Chunk *chunkFromDrive = readChunk(x, z);
             struct ChunkMapEntry *entry = getChunk(window, x, z);
             if(entry != NULL){
-                visableChunks[i++] = entry;
+                visableChunks[i] = entry;
+                if(x == pos.x - RENDER_DISTANCE / 2 || x == pos.x + RENDER_DISTANCE / 2 || z == pos.z - RENDER_DISTANCE / 2 || z == pos.z + RENDER_DISTANCE / 2){
+                    visableChunks[i++]->dirtyFlag = true;
+                }
+                else{
+                    visableChunks[i++]->dirtyFlag = false;
+                }
                 if(chunkFromDrive != NULL){
                     free(chunkFromDrive);
                 }
@@ -837,17 +844,27 @@ void setVisableChunks(GLFWwindow *window){
                 fflush(stdout);
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 createChunkEntryFromDisk(window, visableChunks[i], chunkFromDrive, x, z);
+                visableChunks[i]->dirtyFlag = true;
                 i++;
             }
             else{
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 *visableChunks[i] = createChunkEntry(window, x, z);
                 setChunk(window, visableChunks[i]);
-                putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO, &visableChunks[i]->vboIndex);
+                visableChunks[i]->dirtyFlag = true;
                 i++;
             }
         }
     }
+    for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
+        if(visableChunks[i]->dirtyFlag == true){
+            struct Mesh *mesh = malloc(sizeof(struct Mesh));
+            *mesh = createChunkMesh(window, visableChunks[i]);
+            visableChunks[i]->mesh = mesh;
+            putDataOntoGPU(window, *visableChunks[i]->mesh, visableChunks[i]->VAO, visableChunks[i]->VBO, &visableChunks[i]->vboIndex);
+        }
+    }
+
 }
 
 
@@ -895,7 +912,7 @@ int main(){
 
     struct World world;
     world.count = 0;
-    world.max = 1000;
+    world.max = 10000;
     world.chunkMap = NULL;
 
     struct DataWrapper dataWrapper = {

@@ -67,6 +67,7 @@ struct ChunkMapEntry {
   unsigned int VBO[3];
   int vboIndex;
   unsigned int VAO;
+  bool dirtyFlag;
 };
 
 struct ChunkMapEntryPtrPair {
