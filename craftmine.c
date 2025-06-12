@@ -92,16 +92,15 @@ char *readShaderFile(const char *fileName){
     fileText[size] = '\0';
 
     fclose(file);
-    free(fileText);
     return fileText;
 }
 
 
 unsigned int linkShaders(const char *vertexFileName, const char *fragmentFileName){
-    const GLchar *vertexFileText = readShaderFile(vertexFileName);
+    GLchar *vertexFileText = readShaderFile(vertexFileName);
     unsigned int vertexShader;
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexFileText, NULL);
+    glShaderSource(vertexShader, 1, (const GLchar * const*)&vertexFileText, NULL);
     glCompileShader(vertexShader);
 
     int success;
@@ -114,9 +113,9 @@ unsigned int linkShaders(const char *vertexFileName, const char *fragmentFileNam
     }
 
     unsigned int fragmentShader;
-    const GLchar *fragmentFileText = readShaderFile(fragmentFileName);
+    GLchar *fragmentFileText = readShaderFile(fragmentFileName);
     fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentFileText, NULL);
+    glShaderSource(fragmentShader, 1, (const GLchar * const*)&fragmentFileText, NULL);
     glCompileShader(fragmentShader);
 
     glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
@@ -140,6 +139,10 @@ unsigned int linkShaders(const char *vertexFileName, const char *fragmentFileNam
         glGetShaderInfoLog(shaderProgram, 512, NULL, infoLog);
         printf("ERROR::SHADER::LINKING_FAILED\n%s\n",infoLog);
     }
+
+    free(vertexFileText);
+    free(fragmentFileText);
+
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
@@ -831,11 +834,11 @@ void setVisableChunks(GLFWwindow *window){
             if(entry != NULL){
                 visableChunks[i] = entry;
                 if(x == (pos.x - RENDER_DISTANCE / 2) || x == (pos.x + RENDER_DISTANCE / 2 - 1)|| z == (pos.z - RENDER_DISTANCE / 2) || z == (pos.z + RENDER_DISTANCE / 2 - 1)){
-                    visableChunks[i]->dirtyFlag = true;
+                    visableChunks[i]->dirtyFlag = false;
 
                 }
                 else{
-                    visableChunks[i]->dirtyFlag = true;
+                    visableChunks[i]->dirtyFlag = false;
                 }
                 if(chunkFromDrive != NULL){
                     free(chunkFromDrive);
@@ -843,12 +846,18 @@ void setVisableChunks(GLFWwindow *window){
                 i++;
             }
             else if(chunkFromDrive != NULL){
+                /*if(visableChunks[i]){
+                    removeChunkEntry(window, visableChunks[i]);
+                }*/
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 createChunkEntryFromDisk(window, visableChunks[i], chunkFromDrive, x, z);
                 visableChunks[i]->dirtyFlag = true;
                 i++;
             }
             else{
+                /*if(visableChunks[i]){
+                    removeChunkEntry(window, visableChunks[i]);
+                }*/
                 visableChunks[i] = malloc(sizeof(struct ChunkMapEntry));
                 *visableChunks[i] = createChunkEntry(window, x, z);
                 setChunk(window, visableChunks[i]);
@@ -858,7 +867,7 @@ void setVisableChunks(GLFWwindow *window){
         }
     }
     for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
-        if(visableChunks[i]->dirtyFlag == true || true){
+        if(visableChunks[i]->dirtyFlag == true){
             struct Mesh *mesh = malloc(sizeof(struct Mesh));
             *mesh = createChunkMesh(window, visableChunks[i]);
             visableChunks[i]->mesh = mesh;
@@ -921,6 +930,10 @@ int main(){
         .world = &world,
         .visableChunks = malloc(sizeof(struct ChunkMapEntry *) * RENDER_DISTANCE * RENDER_DISTANCE),
     };
+
+    for(int i = 0; i < RENDER_DISTANCE * RENDER_DISTANCE; i++){
+        dataWrapper.visableChunks[i] = NULL;
+    }
 
     glfwSetWindowUserPointer(window, &dataWrapper);
     glfwSetCursorPosCallback(window, mouseCallback);
@@ -1001,6 +1014,7 @@ int main(){
         removeChunkEntry(window, dataWrapper.visableChunks[i]);
     }
     free(dataWrapper.visableChunks);
+    hmfree(world.chunkMap);
 
     glfwTerminate();
     return 0;
